@@ -1,0 +1,17 @@
+# systemd user unit. Install:
+#   cp expenses.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now expenses
+#   sudo loginctl enable-linger $USER      # keep running after logout / start at boot
+[Unit]
+Description=DDLC expense tracker (dashboard + Discord webhook)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/expenses
+EnvironmentFile=-%h/expenses/.env
+ExecStart=/usr/bin/python3 %h/expenses/server.py --port 9200 --bind 127.0.0.1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

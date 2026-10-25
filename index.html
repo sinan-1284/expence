@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DDLC Expenses</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💸</text></svg>">
+<style>
+  :root {
+    --bg:#f2f3f3; --surface:#fff; --border:#e3e5e8; --text:#0b0b0b; --text2:#52514e; --muted:#747472;
+    --accent:#0972d3; --top:#232f3e; --top-text:#fff; --series:#2a78d6; --series-dim:#9ec5f4; --grid:#e8e8e6; --track:#e8e8e6;
+    --good:#1d8102; --warnc:#b25e00; --crit:#d91515; --off:#687078;
+    --good-bg:#f2fcf3; --warn-bg:#fffce9; --crit-bg:#fff7f7; --off-bg:#f4f4f4;
+    --m-good:#0ca30c; --m-warn:#fab219; --m-crit:#d03b3b;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0f1214; --surface:#1a1a19; --border:#2e3236; --text:#f0efec; --text2:#c3c2b7; --muted:#8d8c86;
+    --accent:#539fe5; --top:#0b0d10; --series:#3987e5; --series-dim:#184f95; --grid:#2a2a28; --track:#2e3236;
+    --good:#29ad32; --warnc:#f0a32b; --crit:#ff5d64; --off:#8d99a8;
+    --good-bg:#132a14; --warn-bg:#2e2410; --crit-bg:#33161a; --off-bg:#22262a; color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg:#0f1214; --surface:#1a1a19; --border:#2e3236; --text:#f0efec; --text2:#c3c2b7; --muted:#8d8c86;
+    --accent:#539fe5; --top:#0b0d10; --series:#3987e5; --series-dim:#184f95; --grid:#2a2a28; --track:#2e3236;
+    --good:#29ad32; --warnc:#f0a32b; --crit:#ff5d64; --off:#8d99a8;
+    --good-bg:#132a14; --warn-bg:#2e2410; --crit-bg:#33161a; --off-bg:#22262a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  .top { background: var(--top); color: var(--top-text); height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .top b { font-size: 15px; letter-spacing: .01em; } .top a { color: inherit; }
+  .top .grow { flex: 1; } .top small { opacity: .7; font-size: 12px; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 24px; margin: 0; font-weight: 700; }
+  .sub { color: var(--text2); margin: 4px 0 16px; }
+  .muted { color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; }
+  .side { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 0; align-self: start; position: sticky; top: 12px; }
+  .side .name { padding: 0 16px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .side .name b { display: block; font-size: 16px; margin-bottom: 2px; }
+  .side .name small { color: var(--muted); font-size: 12px; }
+  .side a { display: block; padding: 7px 16px; color: var(--text2); border-left: 3px solid transparent; }
+  .side a:hover { background: var(--bg); text-decoration: none; }
+  .side a.on { color: var(--accent); border-left-color: var(--accent); font-weight: 600; background: var(--bg); }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .head .sub { margin-bottom: 0; }
+  .monthnav { display: flex; align-items: center; gap: 4px; }
+  .monthnav b { min-width: 130px; text-align: center; font-size: 15px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .panel h3 { margin: 0 0 12px; font-size: 15px; display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+  .panel h3 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .tile small { display: block; color: var(--muted); font-size: 12px; }
+  .tile b { font-size: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tile span { display: block; font-size: 12px; color: var(--text2); min-height: 1.4em; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .two > .panel { margin-bottom: 0; } .two + .panel, .two + .two { margin-top: 16px; }
+  button, .btn { font: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  button:hover, .btn:hover { border-color: var(--accent); text-decoration: none; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { color: var(--crit); }
+  button.icon { padding: 4px 9px; }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select, textarea { font: inherit; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); min-width: 0; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+  .form .wide { grid-column: span 2; }
+  .form .actions { display: flex; gap: 8px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input[type=search] { flex: 1; min-width: 180px; max-width: 360px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  td.r, th.r { text-align: right; } td.amt { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; font-weight: 600; }
+  td .small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+  tfoot td { font-weight: 700; border-top: 1px solid var(--border); border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  .rowbtns { display: flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 1px 8px; border-radius: 99px; background: var(--bg); color: var(--text2); white-space: nowrap; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+  .badge i { font-style: normal; width: 15px; height: 15px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; color: #fff; }
+  .good { color: var(--good); background: var(--good-bg); } .good i { background: var(--good); }
+  .warn { color: var(--warnc); background: var(--warn-bg); } .warn i { background: var(--warnc); }
+  .crit { color: var(--crit); background: var(--crit-bg); } .crit i { background: var(--crit); }
+  .off { color: var(--off); background: var(--off-bg); } .off i { background: var(--off); }
+  .empty { padding: 28px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; }
+  .list { display: flex; flex-direction: column; }
+  .list .item { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); align-items: center; }
+  .list .item:last-child { border-bottom: 0; }
+  .list .item small { display: block; color: var(--muted); font-size: 12px; }
+  .list .item b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* category bars + budget meters */
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  .bar .lbl { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+  .bar .lbl b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bar .lbl small { color: var(--muted); font-weight: 400; }
+  .track { position: relative; height: 10px; background: var(--track); border-radius: 4px; }
+  .track > div { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; min-width: 2px; }
+  .track .fill { background: var(--series); }
+  .track .m-good { background: var(--m-good); } .track .m-warn { background: var(--m-warn); } .track .m-crit { background: var(--m-crit); }
+  .track .mark { width: 2px; min-width: 2px; background: var(--text); border-radius: 0; top: -3px; bottom: -3px; }
+  /* chart */
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart .grid line { stroke: var(--grid); stroke-width: 1; }
+  .chart .axis text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart .b { fill: var(--series); } .chart .b.dim { fill: var(--series-dim); }
+  .chart .hit { fill: transparent; cursor: pointer; }
+  .chart .hit:hover { fill: var(--text); fill-opacity: .05; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.15); white-space: nowrap; z-index: 5; }
+  .tip b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+  dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); padding: 18px; width: min(560px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog h3 { margin: 0 0 12px; }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--top); color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+  .toast.err { background: var(--crit); }
+  .drop { border: 1px dashed var(--border); border-radius: 8px; padding: 7px 10px; color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drop.has { color: var(--text); border-style: solid; }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; }
+    .side { position: static; display: flex; overflow-x: auto; padding: 0; }
+    .side .name { display: none; }
+    .side a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
+    .side a.on { border-bottom-color: var(--accent); }
+    .form .wide { grid-column: auto; }
+    .hide-sm { display: none; }
+    .two { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="top"><b>💸 DDLC Expenses</b><span class="grow"></span><small id="clock"></small><a href="#" id="logout" hidden>Log out</a></div>
+<div class="wrap" id="app"></div>
+<div class="tip" id="tip" hidden></div>
+<dialog id="dlg"></dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SECTIONS = [["overview", "Overview"], ["expenses", "Expenses"], ["subscriptions", "Subscriptions"], ["budgets", "Budgets"], ["settings", "Discord & export"]];
+let META = null, MONTH = null;
+
+// ── formatting ──
+const inrFmt = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2, minimumFractionDigits: 0 });
+const inr = x => inrFmt.format(Math.round((x || 0) * 100) / 100).replace(/\.00$/, "");
+const inr0 = x => "₹" + Math.round(x || 0).toLocaleString("en-IN");
+const money = (a, c) => c === "USD" ? "$" + Number(a).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : inr(a);
+function compact(x) {
+  const a = Math.abs(x);
+  if (a >= 1e7) return "₹" + +(x / 1e7).toFixed(1) + "Cr";
+  if (a >= 1e5) return "₹" + +(x / 1e5).toFixed(1) + "L";
+  if (a >= 1e3) return "₹" + +(x / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k";
+  return "₹" + Math.round(x);
+}
+const D = s => new Date(s + "T00:00:00");
+const dayFmt = s => { const d = D(s), y = d.getFullYear() !== new Date().getFullYear(); return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(y ? { year: "numeric" } : {}) }); };
+const monthName = (m, short) => D(m + "-01").toLocaleDateString("en-IN", { month: short ? "short" : "long", year: short ? "2-digit" : "numeric" });
+const shift = (m, n) => { let [y, mo] = m.split("-").map(Number); mo += n; y += Math.floor((mo - 1) / 12); mo = ((mo - 1) % 12 + 12) % 12 + 1; return `${y}-${String(mo).padStart(2, "0")}`; };
+const emoji = c => (META?.categories.find(x => x.name === c) || {}).emoji || "📦";
+const catOptions = (sel, auto) => (auto ? `<option value="">Auto (from vendor)</option>` : "") +
+  META.categories.map(c => `<option value="${esc(c.name)}" ${c.name === sel ? "selected" : ""}>${c.emoji} ${esc(c.name)}</option>`).join("");
+function toast(msg, err) {
+  const t = document.createElement("div"); t.className = "toast" + (err ? " err" : ""); t.textContent = msg;
+  document.body.append(t); setTimeout(() => t.remove(), err ? 5000 : 2500);
+}
+
+// ── API with the login token ──
+const store = {  // storage can be blocked (private mode); the token is then kept for this page only
+  mem: {},
+  get(k) { try { return localStorage.getItem(k) ?? this.mem[k] ?? null; } catch (e) { return this.mem[k] ?? null; } },
+  set(k, v) { this.mem[k] = v; try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} },
+};
+class LoginRequired extends Error {}
+const tokenQS = () => store.get("exp_token") ? "token=" + encodeURIComponent(store.get("exp_token")) : "";
+async function api(path, method = "GET", body, raw) {
+  const headers = {}, token = store.get("exp_token");
+  if (token) headers.Authorization = "Bearer " + token;
+  const opt = { method, headers };
+  if (raw) { opt.body = body; headers["Content-Type"] = raw.type || "application/octet-stream"; headers["X-Filename"] = raw.name || ""; }
+  else if (body !== undefined) { opt.body = JSON.stringify(body); headers["Content-Type"] = "application/json"; }
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: "bad reply from server" }));
+  if (r.status === 401 && j.login) throw new LoginRequired(j.error);
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+function showLogin(why) {
+  $("logout").hidden = true;
+  $("app").innerHTML = `<form class="panel" id="loginForm" style="max-width:360px;margin:60px auto">
+      <h3>💸 DDLC Expenses</h3>
+      <label>Password<input type="password" id="pw" autocomplete="current-password" autofocus required></label>
+      <div style="margin-top:12px"><button class="primary" type="submit">Sign in</button></div>
+      <div id="loginMsg" class="muted" style="margin-top:10px;min-height:1.4em">${why && why !== "login required" ? esc(why) : ""}</div>
+    </form>`;
+  $("loginForm").onsubmit = async e => {
+    e.preventDefault(); $("loginMsg").textContent = "Signing in…";
+    try { const r = await api("/api/login", "POST", { password: $("pw").value }); store.set("exp_token", r.token); META = null; route(); }
+    catch (err) { $("loginMsg").textContent = err.message; }
+  };
+}
+$("logout").onclick = e => { e.preventDefault(); store.set("exp_token", null); showLogin(); };
+
+// ── routing ──
+function parseHash() {
+  const [p, q] = location.hash.replace(/^#\/?/, "").split("?");
+  const qs = new URLSearchParams(q || "");
+  return { section: SECTIONS.some(s => s[0] === p) ? p : "overview", m: qs.get("m") };
+}
+async function route() {
+  try {
+    if (!META) META = await api("/api/meta");
+    $("logout").hidden = !META.login;
+    const { section, m } = parseHash();
+    if (m && /^\d{4}-\d{2}$/.test(m)) MONTH = m;
+    MONTH = MONTH || META.today.slice(0, 7);
+    $("app").innerHTML = `<div class="layout">
+        <nav class="side"><div class="name"><b>DDLC AI</b><small>Company expenses</small></div>
+          ${SECTIONS.map(([id, label]) => `<a href="#/${id}" class="${id === section ? "on" : ""}">${label}</a>`).join("")}</nav>
+        <main id="main"><div class="empty">Loading…</div></main></div>`;
+    await VIEWS[section]();
+  } catch (e) {
+    if (e instanceof LoginRequired) showLogin(e.message);
+    else $("app").innerHTML = `<div class="empty">Couldn't load: ${esc(e.message)}</div>`;
+  }
+}
+window.addEventListener("hashchange", route);
+function monthNav(section) {
+  const cur = META.today.slice(0, 7);
+  return `<div class="monthnav">
+      <button class="icon" onclick="go('${section}', '${shift(MONTH, -1)}')" aria-label="Previous month">‹</button>
+      <b>${monthName(MONTH)}</b>
+      <button class="icon" onclick="go('${section}', '${shift(MONTH, 1)}')" ${MONTH >= cur ? "disabled" : ""} aria-label="Next month">›</button>
+      ${MONTH !== cur ? `<button onclick="go('${section}', '${cur}')">This month</button>` : ""}</div>`;
+}
+function go(section, m) { MONTH = m; location.hash = `#/${section}?m=${m}`; }
+
+// ── charts ──
+function tipAt(evt, html) {
+  const t = $("tip"); t.innerHTML = html; t.hidden = false;
+  const r = t.getBoundingClientRect(), x = Math.min(evt.pageX + 12, window.scrollX + innerWidth - r.width - 8);
+  t.style.left = x + "px"; t.style.top = (evt.pageY - r.height - 12) + "px";
+}
+const hideTip = () => { $("tip").hidden = true; };
+function niceMax(v) { if (v <= 0) return 1000; const p = 10 ** Math.floor(Math.log10(v)), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
+function barChart(el, points, { selected, onPick } = {}) {
+  // single-series monthly bars: 4px rounded tops anchored at the baseline, hairline grid, hover tooltip
+  const W = el.clientWidth || 600, H = 210, L = 48, R = 8, T = 10, B = 24;
+  const max = niceMax(Math.max(...points.map(p => p.v)));
+  const iw = W - L - R, ih = H - T - B, slot = iw / points.length, bw = Math.max(4, Math.min(36, slot - 6));
+  const y = v => T + ih - ih * v / max;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly spending, last 12 months"><g class="grid">`;
+  for (let i = 0; i <= 4; i++) s += `<line x1="${L}" x2="${W - R}" y1="${y(max * i / 4)}" y2="${y(max * i / 4)}"/>`;
+  s += `</g><g class="axis">`;
+  for (let i = 0; i <= 4; i++) s += `<text x="${L - 6}" y="${y(max * i / 4) + 4}" text-anchor="end">${compact(max * i / 4)}</text>`;
+  points.forEach((p, i) => { if (points.length <= 12 || i % 2 === 0) s += `<text x="${L + slot * i + slot / 2}" y="${H - 6}" text-anchor="middle">${esc(p.label)}</text>`; });
+  s += `</g>`;
+  points.forEach((p, i) => {
+    const x = L + slot * i + (slot - bw) / 2, top = y(p.v), h = T + ih - top, r = Math.min(4, h, bw / 2);
+    if (p.v > 0) s += `<path class="b ${selected && p.key !== selected ? "dim" : ""}" d="M${x},${T + ih} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${T + ih} Z"/>`;
+    s += `<rect class="hit" data-i="${i}" x="${L + slot * i}" y="${T}" width="${slot}" height="${ih}"/>`;
+  });
+  el.innerHTML = s + `</svg>`;
+  el.querySelectorAll(".hit").forEach(h => {
+    const p = points[+h.dataset.i];
+    h.onmousemove = e => tipAt(e, `${esc(p.tip)}<b>${inr(p.v)}</b>${p.sub ? `<span class="muted">${esc(p.sub)}</span>` : ""}`);
+    h.onmouseleave = hideTip;
+    if (onPick) h.onclick = () => { hideTip(); onPick(p); };
+  });
+}
+function meter(spent, budget) {
+  const pct = budget ? 100 * spent / budget : 0;
+  const cls = pct >= 100 ? "crit" : pct >= 80 ? "warn" : "good";
+  const icon = { good: "✓", warn: "!", crit: "✕" }[cls], word = { good: "On track", warn: "Near limit", crit: "Over budget" }[cls];
+  return { cls, pct, badge: `<span class="badge ${cls}"><i>${icon}</i>${word} · ${Math.round(pct)}%</span>`,
+    bar: `<div class="track"><div class="m-${cls}" style="width:${Math.min(100, pct)}%"></div></div>` };
+}
+
+// ── views ──
+const VIEWS = {};
+VIEWS.overview = async () => {
+  const s = await api("/api/summary?month=" + MONTH);
+  const recent = (await api("/api/expenses?month=" + MONTH)).slice(0, 6);
+  const isCur = MONTH === META.today.slice(0, 7);
+  const days = isCur ? +META.today.slice(8) : new Date(+MONTH.slice(0, 4), +MONTH.slice(5), 0).getDate();
+  const delta = s.total - s.prev_total;
+  const vs = s.prev_total ? `${delta > 0 ? "▲" : delta < 0 ? "▼" : "■"} ${inr0(Math.abs(delta))} (${delta >= 0 ? "+" : "−"}${Math.abs(Math.round(100 * delta / s.prev_total))}%) vs ${monthName(shift(MONTH, -1), true)}` : `Nothing in ${monthName(shift(MONTH, -1), true)}`;
+  const bud = s.budget_total ? meter(s.budget_spent, s.budget_total) : null;
+  const maxCat = Math.max(1, ...s.categories.map(c => Math.max(c.total, c.budget || 0)));
+  $("main").innerHTML = `
+    <div class="head"><div><h1>Overview</h1><p class="sub">${isCur ? "Spending so far this month" : "Spending in " + monthName(MONTH)}</p></div>${monthNav("overview")}</div>
+    <div class="tiles">
+      <div class="tile"><small>${isCur ? "This month" : monthName(MONTH)}</small><b>${inr0(s.total)}</b><span>${s.count} expense${s.count === 1 ? "" : "s"}</span></div>
+      <div class="tile"><small>Change</small><b>${s.prev_total ? (delta >= 0 ? "+" : "−") + inr0(Math.abs(delta)) : "—"}</b><span>${esc(vs)}</span></div>
+      <div class="tile"><small>Per day</small><b>${inr0(s.total / Math.max(1, days))}</b><span>over ${days} day${days === 1 ? "" : "s"}</span></div>
+      <div class="tile"><small>Subscriptions</small><b>${inr0(s.subscriptions_monthly)}</b><span>a month, recurring</span></div>
+      ${bud ? `<div class="tile"><small>Budget</small><b>${Math.round(bud.pct)}%</b><span>${inr0(s.budget_spent)} of ${inr0(s.budget_total)} budgeted</span></div>` : ""}
+    </div>
+    <div class="panel"><h3>Last 12 months <small>click a month to open it</small></h3><div class="chart" id="trend"></div></div>
+    <div class="two">
+      <div class="panel"><h3>By category <small>${s.categories.some(c => c.budget) ? "line = budget" : ""}</small></h3>
+        ${s.categories.length ? `<div class="bars">${s.categories.map(c => {
+          const m = c.budget ? meter(c.total, c.budget) : null;
+          return `<div class="bar"><div class="lbl"><span>${c.emoji} ${esc(c.category)} <small>· ${c.count}</small></span>
+            <b>${inr0(c.total)}${c.budget ? ` <small>/ ${inr0(c.budget)}</small>` : ""}</b></div>
+            <div class="track"><div class="${m ? "m-" + m.cls : "fill"}" style="width:${100 * c.total / maxCat}%"></div>
+            ${c.budget ? `<div class="mark" style="left:calc(${100 * c.budget / maxCat}% - 1px)" title="Budget ${inr0(c.budget)}"></div>` : ""}</div>
+            ${m && m.cls !== "good" ? `<div style="margin-top:4px">${m.badge}</div>` : ""}</div>`; }).join("")}</div>`
+          : `<div class="empty">No expenses in ${monthName(MONTH)}. <a href="#/expenses">Add one</a></div>`}
+      </div>
+      <div class="panel"><h3>Coming up <small>next 30 days</small></h3>
+        ${s.upcoming.length ? `<div class="list">${s.upcoming.map(u => `<div class="item"><span>🔁 ${esc(u.vendor)}<small>${dayFmt(u.next_date)} · ${u.cycle}</small></span><b>${money(u.amount, u.currency)}</b></div>`).join("")}</div>`
+          : `<div class="empty">No renewals due. <a href="#/subscriptions">Add subscriptions</a></div>`}
+        <h3 style="margin-top:18px">Top vendors</h3>
+        ${s.top_vendors.length ? `<div class="list">${s.top_vendors.map(v => `<div class="item"><span>${esc(v.vendor)}<small>${v.count}×</small></span><b>${inr0(v.total)}</b></div>`).join("")}</div>` : `<div class="muted">—</div>`}
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3>Latest <a href="#/expenses?m=${MONTH}" style="font-size:13px;font-weight:400">All expenses →</a></h3>
+      ${recent.length ? `<div class="list">${recent.map(e => `<div class="item"><span>${emoji(e.category)} ${esc(e.vendor)}<small>${dayFmt(e.date)}${e.note ? " · " + esc(e.note) : ""}</small></span><b>${money(e.amount, e.currency)}</b></div>`).join("")}</div>`
+        : `<div class="empty">Nothing yet. <a href="#/expenses">Add an expense</a></div>`}
+    </div>`;
+  barChart($("trend"), s.trend.map(t => ({ key: t.month, v: t.total, label: monthName(t.month, true).split(" ")[0], tip: monthName(t.month) })),
+    { selected: MONTH, onPick: p => go("overview", p.key) });
+};
+
+function expenseForm(e = {}) {
+  return `<label>Amount<input name="amount" type="number" step="0.01" min="0.01" inputmode="decimal" required value="${e.amount ?? ""}" placeholder="0"></label>
+    <label>Currency<select name="currency">${META.currencies.map(c => `<option ${c === (e.currency || "INR") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+    <label>Vendor<input name="vendor" list="vendors" required maxlength="80" value="${esc(e.vendor || "")}" placeholder="Hetzner, Swiggy, Uber…"></label>
+    <label>Category<select name="category">${catOptions(e.category, !e.id)}</select></label>
+    <label>Date<input name="date" type="date" required max="${META.today}" value="${e.date || META.today}"></label>
+    <label class="wide">Note<input name="note" maxlength="300" value="${esc(e.note || "")}" placeholder="Optional"></label>
+    <datalist id="vendors">${META.vendors.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
+}
+const formData = f => Object.fromEntries(new FormData(f).entries());
+async function uploadReceipt(id, file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) throw new Error("receipt is over 10 MB");
+  await api(`/api/expenses/${id}/receipt`, "PUT", file, file);
+}
+function pickFile(input, label) {
+  input.onchange = () => { const f = input.files[0]; label.textContent = f ? "📎 " + f.name : "📎 Receipt (optional)"; label.classList.toggle("has", !!f); };
+}
+
+VIEWS.expenses = async () => {
+  const { q = "", cat = "" } = VIEWS.expenses.filter || {};
+  const rows = await api(`/api/expenses?month=${MONTH}&q=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}`);
+  const total = rows.reduce((a, e) => a + e.inr, 0);
+  $("main").innerHTML = `
+    <div class="head"><div><h1>Expenses</h1><p class="sub">Every expense is posted to Discord${META.discord ? "" : " once a webhook is set"}.</p></div>${monthNav("expenses")}</div>
+    <form class="panel" id="addForm"><h3>Add expense</h3>
+      <div class="form">${expenseForm()}
+        <label>Receipt<input type="file" id="rcpt" accept="image/*,application/pdf" hidden><span class="drop" id="rcptLbl" onclick="$('rcpt').click()">📎 Receipt (optional)</span></label>
+        <div class="actions"><button class="primary" type="submit">Add</button></div></div>
+    </form>
+    <div class="panel">
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Search vendor or note" value="${esc(q)}">
+        <select id="cat"><option value="">All categories</option>${catOptions(cat)}</select>
+        <span class="grow" style="flex:1"></span>
+        <a class="btn" href="/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ CSV for ${monthName(MONTH, true)}</a>
+      </div>
+      ${rows.length ? `<div class="scroll"><table>
+        <thead><tr><th>Date</th><th>Vendor</th><th class="hide-sm">Category</th><th class="hide-sm">Note</th><th class="r">Amount</th><th></th></tr></thead>
+        <tbody>${rows.map(e => `<tr>
+          <td class="num">${dayFmt(e.date)}</td>
+          <td>${esc(e.vendor)}${e.source === "subscription" ? ` <span class="pill">🔁</span>` : ""}</td>
+          <td class="hide-sm"><span class="pill">${emoji(e.category)} ${esc(e.category)}</span></td>
+          <td class="hide-sm muted">${esc(e.note)}</td>
+          <td class="amt">${money(e.amount, e.currency)}${e.currency !== "INR" ? `<span class="small">${inr(e.inr)}</span>` : ""}</td>
+          <td><div class="rowbtns">${e.receipt ? `<a class="btn icon" href="/api/receipts/${e.id}?${tokenQS()}" target="_blank" title="Receipt">📎</a>` : ""}
+            <button class="icon" onclick="editExpense(${e.id})" title="Edit">✎</button>
+            <button class="icon danger" onclick="delExpense(${e.id})" title="Delete">🗑</button></div></td></tr>`).join("")}</tbody>
+        <tfoot><tr><td colspan="2">${rows.length} expense${rows.length === 1 ? "" : "s"}</td><td class="hide-sm"></td><td class="hide-sm"></td><td class="amt">${inr(total)}</td><td></td></tr></tfoot>
+      </table></div>` : `<div class="empty">${q || cat ? "Nothing matches." : "No expenses in " + monthName(MONTH) + " yet."}</div>`}
+    </div>`;
+  pickFile($("rcpt"), $("rcptLbl"));
+  let t; $("q").oninput = () => { clearTimeout(t); t = setTimeout(() => { VIEWS.expenses.filter = { q: $("q").value, cat }; VIEWS.expenses().then(() => { $("q").focus(); $("q").setSelectionRange(9e9, 9e9); }); }, 300); };
+  $("cat").onchange = () => { VIEWS.expenses.filter = { q, cat: $("cat").value }; VIEWS.expenses(); };
+  $("addForm").onsubmit = async ev => {
+    ev.preventDefault();
+    const btn = ev.target.querySelector("button[type=submit]"); btn.disabled = true;
+    try {
+      const e = await api("/api/expenses", "POST", formData(ev.target));
+      await uploadReceipt(e.id, $("rcpt").files[0]);
+      if (!META.vendors.includes(e.vendor)) META.vendors.unshift(e.vendor);
+      toast(`Added ${money(e.amount, e.currency)} · ${e.vendor}`);
+      if (e.date.slice(0, 7) !== MONTH) go("expenses", e.date.slice(0, 7)); else VIEWS.expenses();
+    } catch (err) { if (err instanceof LoginRequired) return showLogin(); toast(err.message, true); btn.disabled = false; }
+  };
+};
+async function editExpense(id) {
+  const e = (await api(`/api/expenses?month=${MONTH}`)).find(x => x.id === id);
+  const d = $("dlg");
+  d.innerHTML = `<form id="editForm"><h3>Edit expense #${id}</h3><div class="form">${expenseForm(e)}
+      <label class="wide">Receipt<input type="file" id="ercpt" accept="image/*,application/pdf" hidden>
+        <span class="drop ${e.receipt ? "has" : ""}" id="ercptLbl" onclick="$('ercpt').click()">${e.receipt ? "📎 Replace receipt" : "📎 Add receipt"}</span></label>
+      ${e.receipt ? `<label><span>&nbsp;</span><button type="button" class="danger" id="rmR">Remove receipt</button></label>` : ""}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" onclick="$('dlg').close()">Cancel</button><button class="primary" type="submit">Save</button></div></form>`;
+  d.showModal();
+  pickFile($("ercpt"), $("ercptLbl"));
+  if ($("rmR")) $("rmR").onclick = async () => { await api(`/api/expenses/${id}/receipt`, "DELETE"); d.close(); toast("Receipt removed"); VIEWS.expenses(); };
+  $("editForm").onsubmit = async ev => {
+    ev.preventDefault();
+    try { await api(`/api/expenses/${id}`, "PUT", formData(ev.target)); await uploadReceipt(id, $("ercpt").files[0]); d.close(); toast("Saved"); VIEWS.expenses(); }
+    catch (err) { toast(err.message, true); }
+  };
+}
+async function delExpense(id) {
+  if (!confirm(`Delete expense #${id}?`)) return;
+  try { await api(`/api/expenses/${id}`, "DELETE"); toast("Deleted"); VIEWS.expenses(); } catch (err) { toast(err.message, true); }
+}
+
+function subForm(s = {}) {
+  return `<label>Vendor<input name="vendor" list="vendors" required maxlength="80" value="${esc(s.vendor || "")}" placeholder="Hetzner"></label>
+    <label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${s.amount ?? ""}"></label>
+    <label>Currency<select name="currency">${META.currencies.map(c => `<option ${c === (s.currency || "INR") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+    <label>Every<select name="cycle"><option value="monthly" ${s.cycle !== "yearly" ? "selected" : ""}>Month</option><option value="yearly" ${s.cycle === "yearly" ? "selected" : ""}>Year</option></select></label>
+    <label>Next charge<input name="next_date" type="date" required value="${s.next_date || META.today}"></label>
+    <label>Category<select name="category">${catOptions(s.category, !s.id)}</select></label>
+    <datalist id="vendors">${META.vendors.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
+}
+VIEWS.subscriptions = async () => {
+  const subs = await api("/api/subscriptions");
+  const monthly = subs.filter(s => s.active).reduce((a, s) => a + (s.monthly_inr || 0), 0);
+  $("main").innerHTML = `
+    <div class="head"><div><h1>Subscriptions</h1><p class="sub">Recurring bills are added as expenses on their day. Discord gets a reminder 3 days before.</p></div></div>
+    <div class="tiles"><div class="tile"><small>Per month</small><b>${inr0(monthly)}</b><span>yearly bills spread over 12 months</span></div>
+      <div class="tile"><small>Per year</small><b>${inr0(monthly * 12)}</b><span>${subs.filter(s => s.active).length} active</span></div></div>
+    <form class="panel" id="subForm"><h3>Add subscription <small>a next charge of today or earlier is added right away</small></h3>
+      <div class="form">${subForm()}<div class="actions"><button class="primary" type="submit">Add</button></div></div></form>
+    <div class="panel">${subs.length ? `<div class="scroll"><table>
+      <thead><tr><th>Vendor</th><th class="hide-sm">Category</th><th>Next charge</th><th class="r">Amount</th><th class="r hide-sm">Per month</th><th>Status</th><th></th></tr></thead>
+      <tbody>${subs.map(s => `<tr>
+        <td>${esc(s.vendor)}</td><td class="hide-sm"><span class="pill">${emoji(s.category)} ${esc(s.category)}</span></td>
+        <td class="num">${s.active ? dayFmt(s.next_date) : "—"}</td>
+        <td class="amt">${money(s.amount, s.currency)}<span class="small">${s.cycle === "yearly" ? "a year" : "a month"}</span></td>
+        <td class="amt hide-sm">${s.monthly_inr != null ? inr0(s.monthly_inr) : "—"}</td>
+        <td>${s.active ? `<span class="badge good"><i>✓</i>Active</span>` : `<span class="badge off"><i>Ⅱ</i>Paused</span>`}</td>
+        <td><div class="rowbtns"><button class="icon" onclick="toggleSub(${s.id}, ${s.active ? 0 : 1})" title="${s.active ? "Pause" : "Resume"}">${s.active ? "Ⅱ" : "▶"}</button>
+          <button class="icon" onclick="editSub(${s.id})" title="Edit">✎</button>
+          <button class="icon danger" onclick="delSub(${s.id})" title="Delete">🗑</button></div></td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">No subscriptions yet: Hetzner, Cloudflare, AWS, Claude, GitHub, domains…</div>`}</div>`;
+  $("subForm").onsubmit = async ev => {
+    ev.preventDefault();
+    try { const s = await api("/api/subscriptions", "POST", formData(ev.target)); toast(`Added ${s.vendor}`); VIEWS.subscriptions(); }
+    catch (err) { toast(err.message, true); }
+  };
+};
+async function toggleSub(id, active) { try { await api(`/api/subscriptions/${id}`, "PUT", { active }); VIEWS.subscriptions(); } catch (e) { toast(e.message, true); } }
+async function delSub(id) { if (confirm("Delete this subscription? Past charges stay in expenses.")) { await api(`/api/subscriptions/${id}`, "DELETE"); VIEWS.subscriptions(); } }
+async function editSub(id) {
+  const s = (await api("/api/subscriptions")).find(x => x.id === id), d = $("dlg");
+  d.innerHTML = `<form id="esf"><h3>Edit ${esc(s.vendor)}</h3><div class="form">${subForm(s)}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" onclick="$('dlg').close()">Cancel</button><button class="primary" type="submit">Save</button></div></form>`;
+  d.showModal();
+  $("esf").onsubmit = async ev => { ev.preventDefault(); try { await api(`/api/subscriptions/${id}`, "PUT", formData(ev.target)); d.close(); toast("Saved"); VIEWS.subscriptions(); } catch (e) { toast(e.message, true); } };
+}
+
+VIEWS.budgets = async () => {
+  const [b, s] = await Promise.all([api("/api/budgets"), api("/api/summary?month=" + META.today.slice(0, 7))]);
+  const spent = Object.fromEntries(s.categories.map(c => [c.category, c.total]));
+  $("main").innerHTML = `
+    <div class="head"><div><h1>Budgets</h1><p class="sub">Monthly limit per category. Discord is told at 80% and when it goes over. Leave empty for no budget.</p></div></div>
+    <form class="panel" id="bForm"><h3>${monthName(META.today.slice(0, 7))}</h3>
+      <div class="scroll"><table><thead><tr><th>Category</th><th class="r">Spent</th><th style="width:30%" class="hide-sm"></th><th>Status</th><th class="r">Budget ₹ / month</th></tr></thead>
+      <tbody>${META.categories.map(c => { const m = b[c.name] ? meter(spent[c.name] || 0, b[c.name]) : null; return `<tr>
+        <td>${c.emoji} ${esc(c.name)}</td><td class="amt">${inr0(spent[c.name] || 0)}</td>
+        <td class="hide-sm">${m ? m.bar : ""}</td><td>${m ? m.badge : `<span class="muted">—</span>`}</td>
+        <td class="r"><input name="${esc(c.name)}" type="number" min="0" step="100" value="${b[c.name] ?? ""}" placeholder="No budget" style="width:130px;text-align:right"></td></tr>`; }).join("")}</tbody>
+      <tfoot><tr><td>Total</td><td class="amt">${inr0(s.total)}</td><td class="hide-sm"></td><td></td><td class="amt">${Object.keys(b).length ? inr0(Object.values(b).reduce((a, x) => a + x, 0)) : "—"}</td></tr></tfoot></table></div>
+      <div style="margin-top:12px;text-align:right"><button class="primary" type="submit">Save budgets</button></div></form>`;
+  $("bForm").onsubmit = async ev => {
+    ev.preventDefault();
+    const body = Object.fromEntries(META.categories.map(c => [c.name, +ev.target.elements[c.name].value || 0]));
+    try { await api("/api/budgets", "PUT", body); toast("Budgets saved"); VIEWS.budgets(); } catch (e) { toast(e.message, true); }
+  };
+};
+
+VIEWS.settings = async () => {
+  const cur = META.today.slice(0, 7), year = META.today.slice(0, 4);
+  const fy = +META.today.slice(5, 7) >= 4 ? +year : +year - 1;  // Indian financial year, April–March
+  $("main").innerHTML = `
+    <div class="head"><div><h1>Discord & export</h1></div></div>
+    <div class="panel"><h3>Discord ${META.discord ? `<span class="badge good"><i>✓</i>Webhook set</span>` : `<span class="badge off"><i>–</i>Not set</span>`}</h3>
+      <p class="muted" style="margin-top:0">Posted to the channel: every new expense, budget alerts at 80% and 100%, subscription bills on the day they are charged, renewal reminders 3 days before, and last month's summary on the 1st at the start of the day.</p>
+      ${META.discord ? `<div class="toolbar"><button id="dTest">Send test message</button><button id="dRep">Post ${monthName(MONTH)} report now</button></div>`
+        : `<p>Put the channel's webhook URL in <code>.env</code> as <code>DISCORD_WEBHOOK_URL=…</code> and restart the service.</p>`}
+    </div>
+    <div class="panel"><h3>Export CSV <small>opens in Excel / Google Sheets; amounts in the paid currency plus ₹</small></h3>
+      <div class="toolbar">
+        <a class="btn" href="/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ ${monthName(MONTH)}</a>
+        <a class="btn" href="/api/export.csv?from=${fy}-04-01&to=${fy + 1}-03-31&${tokenQS()}">⬇ FY ${fy}–${String(fy + 1).slice(2)}</a>
+        <a class="btn" href="/api/export.csv?${tokenQS()}">⬇ Everything</a>
+      </div>
+      <form id="range" class="form" style="max-width:520px"><label>From<input type="date" name="from" value="${cur}-01"></label><label>To<input type="date" name="to" value="${META.today}"></label><div class="actions"><button type="submit">⬇ Range</button></div></form>
+    </div>`;
+  if ($("dTest")) {
+    $("dTest").onclick = async () => { try { await api("/api/discord/test", "POST", {}); toast("Sent to Discord"); } catch (e) { toast(e.message, true); } };
+    $("dRep").onclick = async () => { try { await api("/api/discord/report", "POST", { month: MONTH }); toast("Report posted"); } catch (e) { toast(e.message, true); } };
+  }
+  $("range").onsubmit = ev => { ev.preventDefault(); const f = formData(ev.target); location.href = `/api/export.csv?from=${f.from}&to=${f.to}&${tokenQS()}`; };
+};
+
+setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }, 1000);
+let rw; window.addEventListener("resize", () => { clearTimeout(rw); rw = setTimeout(() => { if (parseHash().section === "overview" && $("trend")) VIEWS.overview(); }, 250); });
+route();
+</script>
+</body>
+</html>
