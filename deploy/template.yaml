@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: DDLC expense tracker API (Lambda Function URL + DynamoDB + S3 receipts + daily report timer)
+
+Parameters:
+  DashboardPassword: {Type: String, NoEcho: true, MinLength: 4}
+  TokenSecret: {Type: String, NoEcho: true, MinLength: 32}
+  DiscordWebhookUrl: {Type: String, NoEcho: true, Default: ""}
+  PublicUrl: {Type: String, Default: "https://expence.nexbotlabs.in"}
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}  # restore to any second in the last 35 days
+
+  Receipts:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:  # the browser uploads receipts straight to S3 with a presigned URL
+        CorsRules:
+          - AllowedMethods: [PUT, GET]
+            AllowedOrigins: [!Ref PublicUrl, "https://expence.ddlc.ai", "http://localhost:9200"]
+            AllowedHeaders: ["*"]
+            MaxAge: 3600
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - {Effect: Allow, Principal: {Service: lambda.amazonaws.com}, Action: sts:AssumeRole}
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: data
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Query]
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub "${Receipts.Arn}/*"
+              - Effect: Allow
+                Action: s3:ListBucket  # so a missing receipt is a 404, not a 403
+                Resource: !GetAtt Receipts.Arn
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: DDLC expense tracker API
+      Runtime: python3.12
+      Handler: lambda_function.handler
+      Timeout: 25
+      MemorySize: 256
+      Role: !GetAtt Role.Arn
+      Code:  # placeholder; deploy.sh uploads backend/
+        ZipFile: |
+          def handler(event, context):
+              return {"statusCode": 503, "body": "deploying"}
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          RECEIPTS_BUCKET: !Ref Receipts
+          DASHBOARD_PASSWORD: !Ref DashboardPassword
+          TOKEN_SECRET: !Ref TokenSecret
+          DISCORD_WEBHOOK_URL: !Ref DiscordWebhookUrl
+          PUBLIC_URL: !Ref PublicUrl
+
+  Url:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref Function
+      AuthType: NONE  # the API checks its own login token
+      Cors:
+        AllowOrigins: [!Ref PublicUrl, "https://expence.ddlc.ai", "http://localhost:9200"]
+        AllowMethods: ["*"]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  Daily:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Weekly (Monday) and monthly (1st) Discord reports
+      ScheduleExpression: cron(35 3 * * ? *)  # 09:05 IST every day; the code decides what is due
+      Targets:
+        - {Arn: !GetAtt Function.Arn, Id: daily}
+
+  DailyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt Daily.Arn
+
+Outputs:
+  ApiUrl: {Value: !GetAtt Url.FunctionUrl}
+  FunctionName: {Value: !Ref Function}
+  TableName: {Value: !Ref Table}
+  BucketName: {Value: !Ref Receipts}

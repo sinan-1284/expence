@@ -15,7 +15,7 @@ import threading
 import urllib.request
 from datetime import date, datetime, timedelta
 
-from db import CATEGORIES, TZ, Store, inr, money, month_of, shift_month, today, week_start
+from core import CATEGORIES, TZ, Store, inr, money, month_of, shift_month, today, week_start
 
 BLUE, GREEN, AMBER, GRAY = 0x2A78D6, 0x0CA30C, 0xFAB219, 0x747472
 REPORT_HOUR = 9  # scheduled reports go out from 09:00 IST
@@ -53,8 +53,9 @@ def strip_none(x):
 
 
 class Notifier:
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, background: bool = True):
         self.store = store
+        self.background = background  # False on Lambda: work after the response is not guaranteed to run
         self.webhook = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
         self.url = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
@@ -79,7 +80,7 @@ class Notifier:
                 return str(getattr(e, "reason", e))
             return None
 
-        if wait:
+        if wait or not self.background:
             return send()
         threading.Thread(target=send, daemon=True).start()
         return None

@@ -1,0 +1,11 @@
+# AWS Amplify Hosting (expence.ddlc.ai): serve web/ as a static site, no build.
+version: 1
+frontend:
+  phases:
+    build:
+      commands:
+        - echo "static site in web/"
+  artifacts:
+    baseDirectory: web
+    files:
+      - "**/*"

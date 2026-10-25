@@ -142,8 +142,10 @@
 <div class="tip" id="tip" hidden></div>
 <dialog id="dlg"></dialog>
 
+<script src="config.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+const API = (window.EXPENSES_API || "").replace(/\/$/, "");  // config.js: where the API runs ("" = same site)
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SECTIONS = [["overview", "Overview"], ["expenses", "Expenses"], ["budgets", "Budgets"], ["settings", "Reports & export"]];
 let META = null, MONTH = null;
@@ -180,13 +182,12 @@ const store = {  // storage can be blocked (private mode); the token is then kep
 };
 class LoginRequired extends Error {}
 const tokenQS = () => store.get("exp_token") ? "token=" + encodeURIComponent(store.get("exp_token")) : "";
-async function api(path, method = "GET", body, raw) {
+async function api(path, method = "GET", body) {
   const headers = {}, token = store.get("exp_token");
   if (token) headers.Authorization = "Bearer " + token;
   const opt = { method, headers };
-  if (raw) { opt.body = body; headers["Content-Type"] = raw.type || "application/octet-stream"; headers["X-Filename"] = raw.name || ""; }
-  else if (body !== undefined) { opt.body = JSON.stringify(body); headers["Content-Type"] = "application/json"; }
-  const r = await fetch(path, opt);
+  if (body !== undefined) { opt.body = JSON.stringify(body); headers["Content-Type"] = "application/json"; }
+  const r = await fetch(API + path, opt);
   const j = await r.json().catch(() => ({ error: "bad reply from server" }));
   if (r.status === 401 && j.login) throw new LoginRequired(j.error);
   if (!r.ok) throw new Error(j.error || r.statusText);
@@ -343,9 +344,13 @@ function expenseForm(e = {}) {
 }
 const formData = f => Object.fromEntries(new FormData(f).entries());
 async function uploadReceipt(id, file) {
+  // ask the API where to put the file, upload it straight there, then attach it to the expense
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) throw new Error("receipt is over 10 MB");
-  await api(`/api/expenses/${id}/receipt`, "PUT", file, file);
+  const t = await api(`/api/expenses/${id}/receipt-upload`, "POST", { type: file.type, name: file.name, size: file.size });
+  const up = await fetch(t.url.startsWith("/") ? API + t.url : t.url, { method: "PUT", headers: t.headers, body: file });
+  if (!up.ok) throw new Error("receipt upload failed (" + up.status + ")");
+  await api(`/api/expenses/${id}/receipt`, "PUT", { key: t.key });
 }
 function pickFile(input, label) {
   input.onchange = () => { const f = input.files[0]; label.textContent = f ? "📎 " + f.name : "📎 Receipt (optional)"; label.classList.toggle("has", !!f); };
@@ -367,7 +372,7 @@ VIEWS.expenses = async () => {
         <input type="search" id="q" placeholder="Search vendor or note" value="${esc(q)}">
         <select id="cat"><option value="">All categories</option>${catOptions(cat)}</select>
         <span class="grow" style="flex:1"></span>
-        <a class="btn" href="/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ CSV for ${monthName(MONTH, true)}</a>
+        <a class="btn" href="${API}/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ CSV for ${monthName(MONTH, true)}</a>
       </div>
       ${rows.length ? `<div class="scroll"><table>
         <thead><tr><th>Date</th><th>Vendor</th><th class="hide-sm">Category</th><th class="hide-sm">Note</th><th class="r">Amount</th><th></th></tr></thead>
@@ -377,7 +382,7 @@ VIEWS.expenses = async () => {
           <td class="hide-sm"><span class="pill">${emoji(e.category)} ${esc(e.category)}</span></td>
           <td class="hide-sm muted">${esc(e.note)}</td>
           <td class="amt">${money(e.amount, e.currency)}${e.currency !== "INR" ? `<span class="small">${inr(e.inr)}</span>` : ""}</td>
-          <td><div class="rowbtns">${e.receipt ? `<a class="btn icon" href="/api/receipts/${e.id}?${tokenQS()}" target="_blank" title="Receipt">📎</a>` : ""}
+          <td><div class="rowbtns">${e.receipt ? `<a class="btn icon" href="${API}/api/receipts/${e.id}?${tokenQS()}" target="_blank" title="Receipt">📎</a>` : ""}
             <button class="icon" onclick="editExpense(${e.id})" title="Edit">✎</button>
             <button class="icon danger" onclick="delExpense(${e.id})" title="Delete">🗑</button></div></td></tr>`).join("")}</tbody>
         <tfoot><tr><td colspan="2">${rows.length} expense${rows.length === 1 ? "" : "s"}</td><td class="hide-sm"></td><td class="hide-sm"></td><td class="amt">${inr(total)}</td><td></td></tr></tfoot>
@@ -461,9 +466,9 @@ VIEWS.settings = async () => {
     </div>
     <div class="panel"><h3>Export CSV <small>opens in Excel / Google Sheets; amounts in the paid currency plus ₹</small></h3>
       <div class="toolbar">
-        <a class="btn" href="/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ ${monthName(MONTH)}</a>
-        <a class="btn" href="/api/export.csv?from=${fy}-04-01&to=${fy + 1}-03-31&${tokenQS()}">⬇ FY ${fy}–${String(fy + 1).slice(2)}</a>
-        <a class="btn" href="/api/export.csv?${tokenQS()}">⬇ Everything</a>
+        <a class="btn" href="${API}/api/export.csv?from=${MONTH}-01&to=${MONTH}-31&${tokenQS()}">⬇ ${monthName(MONTH)}</a>
+        <a class="btn" href="${API}/api/export.csv?from=${fy}-04-01&to=${fy + 1}-03-31&${tokenQS()}">⬇ FY ${fy}–${String(fy + 1).slice(2)}</a>
+        <a class="btn" href="${API}/api/export.csv?${tokenQS()}">⬇ Everything</a>
       </div>
       <form id="range" class="form" style="max-width:520px"><label>From<input type="date" name="from" value="${cur}-01"></label><label>To<input type="date" name="to" value="${META.today}"></label><div class="actions"><button type="submit">⬇ Range</button></div></form>
     </div>`;
@@ -478,7 +483,7 @@ VIEWS.settings = async () => {
       toast(`${ev.target.name === "weekly_report" ? "Weekly" : "Monthly"} report ${ev.target.checked ? "on" : "off"}`); }
     catch (e) { ev.target.checked = !ev.target.checked; toast(e.message, true); }
   };
-  $("range").onsubmit = ev => { ev.preventDefault(); const f = formData(ev.target); location.href = `/api/export.csv?from=${f.from}&to=${f.to}&${tokenQS()}`; };
+  $("range").onsubmit = ev => { ev.preventDefault(); const f = formData(ev.target); location.href = `${API}/api/export.csv?from=${f.from}&to=${f.to}&${tokenQS()}`; };
 };
 
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }, 1000);

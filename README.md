@@ -1,14 +1,16 @@
-# expenses
+# expence
 
-DDLC AI expense tracker: a web dashboard at **https://expense.ddlc.ai** that posts to a Discord channel through a webhook.
+DDLC AI expense tracker: a web dashboard at **https://expence.nexbotlabs.in** that posts to a Discord channel through a webhook.
 
 ```
-browser ──https──▶ expense.ddlc.ai ──▶ server.py :9200 ──▶ data/expenses.db (SQLite) + data/receipts/
-                                            │
-                                            └──webhook──▶ Discord #expenses
+browser ──▶ expence.nexbotlabs.in   GitHub Pages: web/index.html + web/config.js
+   │
+   └──fetch──▶ Lambda Function URL   backend/ (Python 3.12) ──▶ DynamoDB  expenses, budgets, settings
+                     ▲                    │            └──────▶ S3        receipts (browser uploads with a presigned URL)
+   EventBridge, daily 09:05 IST ┘         └──webhook──▶ Discord #expenses
 ```
 
-Standard-library Python 3.9+, no pip installs. One shared password.
+The same page is also on AWS Amplify Hosting (expence.ddlc.ai, `amplify.yml`). Python standard library plus boto3, which Lambda provides; nothing to install.
 
 ## Dashboard
 
@@ -23,75 +25,54 @@ Leaving the category on **Auto** picks the category last used for that vendor, o
 
 ## Discord
 
-Messages posted to the webhook's channel:
-
 | When | Message |
 |---|---|
 | An expense is added | amount, vendor, category, date, month so far |
 | A category passes 80% / 100% of its budget | 🟠 / 🔴 alert on that expense, once a month each |
-| Monday, 9:00 IST (weekly report on) | 🗓️ last week: total, change vs the week before, categories, spend per day, top vendors, biggest expenses |
-| 1st of the month, 9:00 IST (monthly report on) | 📊 last month: total, change, categories vs budgets, top vendors |
+| Monday, 9:05 IST (weekly report on) | 🗓️ last week: total, change vs the week before, categories, spend per day, top vendors, biggest expenses |
+| 1st of the month, 9:05 IST (monthly report on) | 📊 last month: total, change, categories vs budgets, top vendors |
 
-Create the webhook in Discord: channel → Edit channel → Integrations → Webhooks → New webhook → Copy webhook URL. Put it in `.env` as `DISCORD_WEBHOOK_URL`.
+Webhook: Discord channel → Edit channel → Integrations → Webhooks → New webhook → Copy webhook URL.
+
+## Files
+
+| Path | |
+|---|---|
+| `web/index.html` | the whole dashboard (one page) |
+| `web/config.js` | the API address, written by `deploy/deploy.sh` |
+| `backend/api.py` | routes and login |
+| `backend/core.py` | expenses, totals, reports, budgets, currency |
+| `backend/notify.py` | Discord messages |
+| `backend/storage.py` | DynamoDB + S3, or a JSON file + folder when local |
+| `backend/lambda_function.py` | Lambda entry point (API + daily timer) |
+| `server.py` | run everything on this machine |
+| `deploy/template.yaml`, `deploy/deploy.sh` | the AWS side (CloudFormation) |
+| `.github/workflows/pages.yml` | publishes `web/` to GitHub Pages on push |
+
+## Deploy
+
+**API (AWS, region ap-south-1):**
+
+```bash
+cp .env.example .env && chmod 600 .env      # password, TOKEN_SECRET, webhook, PUBLIC_URL
+aws login
+deploy/deploy.sh                            # creates / updates stack "ddlc-expenses", uploads backend/
+git add web/config.js && git commit -m "API URL" && git push    # first deploy only
+```
+
+Re-run `deploy/deploy.sh` after changing anything in `backend/` or `.env`. The DynamoDB table and the receipts bucket are kept if the stack is deleted. DynamoDB point-in-time recovery is on (any second in the last 35 days).
+
+**Page (GitHub Pages):** pushing `web/` to `main` publishes it. Repo Settings → Pages: source *GitHub Actions*, custom domain `expence.nexbotlabs.in`, Enforce HTTPS.
+
+**DNS (GoDaddy, nexbotlabs.in):** `CNAME  expence  →  sinan-1284.github.io`
 
 ## Run locally
 
 ```bash
-cp .env.example .env && chmod 600 .env       # password, TOKEN_SECRET, webhook URL
 set -a; . ./.env; set +a
-python3 server.py                            # http://localhost:9200/
+python3 server.py                            # http://localhost:9200/  (data in data/)
 ```
 
-## Deploy (AWS)
+## Cost
 
-It is one long-running Python process that keeps its data on local disk (`data/`), so it needs a
-machine with a persistent disk: an **EC2** instance or **Lightsail** (the smallest size is plenty).
-Amplify Hosting and App Runner do not fit: they serve static sites / restart containers without a
-disk, so the SQLite file and receipts would be lost.
-
-On an Ubuntu instance:
-
-```bash
-git clone https://github.com/sinan-1284/expence.git ~/expenses
-cd ~/expenses
-cp .env.example .env && chmod 600 .env       # set the values
-mkdir -p ~/.config/systemd/user
-cp expenses.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now expenses
-sudo loginctl enable-linger $USER            # start at boot without a login
-curl -s localhost:9200/ | head -3
-```
-
-The service listens on 127.0.0.1:9200 only. Put HTTPS in front of it for expense.ddlc.ai, either:
-
-- **Cloudflare Tunnel** (`ddlc.ai` DNS is on Cloudflare; no inbound ports to open):
-
-  ```bash
-  cloudflared tunnel login
-  cloudflared tunnel create ddlc-expenses
-  cloudflared tunnel route dns ddlc-expenses expense.ddlc.ai
-  # ~/.cloudflared/config.yml → ingress: hostname expense.ddlc.ai, service http://localhost:9200
-  ```
-
-- or **Caddy** (open ports 80/443 in the security group, point an A record at the instance's Elastic IP):
-
-  ```
-  expense.ddlc.ai {
-      reverse_proxy 127.0.0.1:9200
-  }
-  ```
-
-## Data
-
-Everything is in `data/` (git-ignored):
-
-- `expenses.db`: SQLite, the expenses, budgets, report settings and saved exchange rates
-- `receipts/`: receipt files, up to 10 MB each
-- `backups/expenses-YYYY-MM-DD.db`: a copy every day, last 30 kept
-
-To move to another server, copy `data/` and `.env`.
-
-## API
-
-All under `/api/`, with `Authorization: Bearer <token>` from `POST /api/login` (or `?token=` for downloads). See the top of `server.py` for the list.
+Within the AWS free tier for one person's expenses: Lambda and DynamoDB on-demand charge per request, S3 per GB stored. GitHub Pages is free for a public repo.
