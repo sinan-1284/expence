@@ -1,16 +1,16 @@
 # expence
 
-DDLC AI expense tracker: a web dashboard at **https://expence.nexbotlabs.in** that posts to a Discord channel through a webhook.
+DDLC AI expense tracker: a web dashboard at **https://expence.ddlc.ai** that posts to a Discord channel through a webhook.
 
 ```
-browser ──▶ expence.nexbotlabs.in   GitHub Pages: web/index.html + web/config.js
+browser ──▶ expence.ddlc.ai        AWS Amplify Hosting: web/index.html + web/config.js
    │
    └──fetch──▶ Lambda Function URL   backend/ (Python 3.12) ──▶ DynamoDB  expenses, budgets, settings
                      ▲                    │            └──────▶ S3        receipts (browser uploads with a presigned URL)
    EventBridge, daily 09:05 IST ┘         └──webhook──▶ Discord #expenses
 ```
 
-The same page is also on AWS Amplify Hosting (expence.ddlc.ai, `amplify.yml`). Python standard library plus boto3, which Lambda provides; nothing to install.
+Amplify serves `web/` (see `amplify.yml`) and rebuilds on every push to `main`. Python standard library plus boto3, which Lambda provides; nothing to install.
 
 ## Dashboard
 
@@ -47,7 +47,7 @@ Webhook: Discord channel → Edit channel → Integrations → Webhooks → New 
 | `backend/lambda_function.py` | Lambda entry point (API + daily timer) |
 | `server.py` | run everything on this machine |
 | `deploy/template.yaml`, `deploy/deploy.sh` | the AWS side (CloudFormation) |
-| `.github/workflows/pages.yml` | publishes `web/` to GitHub Pages on push |
+| `amplify.yml` | Amplify Hosting: publish `web/` as it is, no build |
 
 ## Deploy
 
@@ -62,9 +62,7 @@ git add web/config.js && git commit -m "API URL" && git push    # first deploy o
 
 Re-run `deploy/deploy.sh` after changing anything in `backend/` or `.env`. The DynamoDB table and the receipts bucket are kept if the stack is deleted. DynamoDB point-in-time recovery is on (any second in the last 35 days).
 
-**Page (GitHub Pages):** pushing `web/` to `main` publishes it. Repo Settings → Pages: source *GitHub Actions*, custom domain `expence.nexbotlabs.in`, Enforce HTTPS.
-
-**DNS (GoDaddy, nexbotlabs.in):** `CNAME  expence  →  sinan-1284.github.io`
+**Page (Amplify Hosting):** pushing to `main` publishes `web/`. The custom domain expence.ddlc.ai is set in Amplify → Hosting → Custom domains; its DNS records are in Cloudflare (ddlc.ai), DNS only.
 
 ## Run locally
 
@@ -75,4 +73,4 @@ python3 server.py                            # http://localhost:9200/  (data in 
 
 ## Cost
 
-Within the AWS free tier for one person's expenses: Lambda and DynamoDB on-demand charge per request, S3 per GB stored. GitHub Pages is free for a public repo.
+Within the AWS free tier for one person's expenses: Lambda and DynamoDB on-demand charge per request, S3 per GB stored.  Amplify Hosting is a few cents a month for a small static page.

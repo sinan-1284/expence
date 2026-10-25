@@ -5,7 +5,7 @@ Parameters:
   DashboardPassword: {Type: String, NoEcho: true, MinLength: 4}
   TokenSecret: {Type: String, NoEcho: true, MinLength: 32}
   DiscordWebhookUrl: {Type: String, NoEcho: true, Default: ""}
-  PublicUrl: {Type: String, Default: "https://expence.nexbotlabs.in"}
+  PublicUrl: {Type: String, Default: "https://expence.ddlc.ai"}
 
 Resources:
   Table:
@@ -35,7 +35,7 @@ Resources:
       CorsConfiguration:  # the browser uploads receipts straight to S3 with a presigned URL
         CorsRules:
           - AllowedMethods: [PUT, GET]
-            AllowedOrigins: [!Ref PublicUrl, "https://expence.ddlc.ai", "http://localhost:9200"]
+            AllowedOrigins: [!Ref PublicUrl, "http://localhost:9200"]
             AllowedHeaders: ["*"]
             MaxAge: 3600
 
@@ -90,7 +90,7 @@ Resources:
       TargetFunctionArn: !Ref Function
       AuthType: NONE  # the API checks its own login token
       Cors:
-        AllowOrigins: [!Ref PublicUrl, "https://expence.ddlc.ai", "http://localhost:9200"]
+        AllowOrigins: [!Ref PublicUrl, "http://localhost:9200"]
         AllowMethods: ["*"]
         AllowHeaders: [authorization, content-type]
         MaxAge: 3600

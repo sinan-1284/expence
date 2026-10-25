@@ -11,7 +11,7 @@ export AWS_REGION=${AWS_REGION:-ap-south-1}
 aws cloudformation deploy --stack-name "$STACK" --template-file deploy/template.yaml \
   --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset \
   --parameter-overrides "DashboardPassword=$DASHBOARD_PASSWORD" "TokenSecret=$TOKEN_SECRET" \
-    "DiscordWebhookUrl=${DISCORD_WEBHOOK_URL:-}" "PublicUrl=${PUBLIC_URL:-https://expence.nexbotlabs.in}"
+    "DiscordWebhookUrl=${DISCORD_WEBHOOK_URL:-}" "PublicUrl=${PUBLIC_URL:-https://expence.ddlc.ai}"
 
 out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
 FN=$(out FunctionName); URL=$(out ApiUrl)
