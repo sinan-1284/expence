@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DDLC Expenses</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💸</text></svg>">
+<meta name="description" content="DDLC AI expense tracker">
+<meta name="theme-color" content="#14532d" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a2615" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Expenses">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root {
     --bg:#f4f8f5; --surface:#fff; --border:#dce8e0; --text:#0b0b0b; --text2:#4a524d; --muted:#6f7772;
@@ -28,7 +37,12 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
-  .top { background: var(--top); color: var(--top-text); height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+  .top { background: var(--top); color: var(--top-text); min-height: 44px; display: flex; align-items: center; gap: 12px;
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+  .top .install { border: 1px solid rgba(255,255,255,.5); border-radius: 99px; padding: 3px 12px; font-size: 13px; }
+  .top .install:hover { background: rgba(255,255,255,.12); text-decoration: none; }
+  @media (display-mode: standalone) { .top .install { display: none; } }
+  @media (max-width: 520px) { .top small { display: none; } }
   .top b { font-size: 15px; letter-spacing: .01em; } .top a { color: inherit; }
   .top .grow { flex: 1; } .top small { opacity: .7; font-size: 12px; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
@@ -137,7 +151,7 @@
 </style>
 </head>
 <body>
-<div class="top"><b>DDLC <span style="font-weight:400;opacity:.85">Expenses</span></b><span class="grow"></span><small id="clock"></small><a href="#" id="logout" hidden>Log out</a></div>
+<div class="top"><b>DDLC <span style="font-weight:400;opacity:.85">Expenses</span></b><span class="grow"></span><small id="clock"></small><a href="#" class="install" id="install" hidden>⬇ Install app</a><a href="#" id="logout" hidden>Log out</a></div>
 <div class="wrap" id="app"></div>
 <div class="tip" id="tip" hidden></div>
 <dialog id="dlg"></dialog>
@@ -484,6 +498,26 @@ VIEWS.settings = async () => {
     catch (e) { ev.target.checked = !ev.target.checked; toast(e.message, true); }
   };
   $("range").onsubmit = ev => { ev.preventDefault(); const f = formData(ev.target); location.href = `${API}/api/export.csv?from=${f.from}&to=${f.to}&${tokenQS()}`; };
+};
+
+// ── install as an app ──
+let installPrompt = null;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; $("install").hidden = false; });
+window.addEventListener("appinstalled", () => { installPrompt = null; $("install").hidden = true; toast("Installed. Open DDLC Expenses from your apps."); });
+if (isIOS && !standalone) $("install").hidden = false;
+$("install").onclick = async e => {
+  e.preventDefault();
+  if (installPrompt) { installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; $("install").hidden = true; return; }
+  const d = $("dlg");
+  d.innerHTML = `<h3>Install DDLC Expenses</h3>
+    ${isIOS ? `<ol style="margin:0 0 12px;padding-left:20px;line-height:1.9"><li>Tap the <b>Share</b> button <span class="pill">⎋ ↑</span> in Safari</li>
+      <li>Choose <b>Add to Home Screen</b></li><li>Tap <b>Add</b></li></ol>`
+    : `<p style="margin-top:0">In Chrome or Edge, open the browser menu (⋮) and choose <b>Install app</b> / <b>Add to Home screen</b>.</p>`}
+    <div style="text-align:right"><button class="primary" onclick="$('dlg').close()">OK</button></div>`;
+  d.showModal();
 };
 
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }, 1000);

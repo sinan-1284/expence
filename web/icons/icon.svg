@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#15803d"/>
+  <circle cx="256" cy="236" r="148" fill="#14532d" opacity=".35"/>
+  <text x="256" y="300" text-anchor="middle" font-family="DejaVu Sans, Noto Sans, Arial, sans-serif" font-size="210" font-weight="700" fill="#fff">₹</text>
+  <text x="256" y="420" text-anchor="middle" font-family="DejaVu Sans, Noto Sans, Arial, sans-serif" font-size="54" font-weight="700" letter-spacing="6" fill="#fff">DDLC</text>
+</svg>

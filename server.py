@@ -11,6 +11,7 @@ Data is kept in data/store.json and data/receipts/. On AWS the same API runs in 
 """
 
 import argparse
+import mimetypes
 import os
 import secrets
 import sys
@@ -21,6 +22,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).parent
+WEB = (HERE / "web").resolve()
 sys.path.insert(0, str(HERE / "backend"))
 
 from api import App  # noqa: E402
@@ -54,10 +56,13 @@ def main():
 
         def _any(self):
             u = urlparse(self.path)
-            if self.command == "GET" and u.path in ("/", "/index.html"):
-                return self._send(200, "text/html; charset=utf-8", (HERE / "web/index.html").read_bytes())
             if self.command == "GET" and u.path == "/config.js":  # same origin: the API is on this port
                 return self._send(200, "text/javascript", b'window.EXPENSES_API = "";')
+            if self.command == "GET" and not u.path.startswith("/api/"):  # the page, manifest, icons, sw.js
+                f = (WEB / (u.path.lstrip("/") or "index.html")).resolve()
+                if f.is_file() and WEB in f.parents:
+                    return self._send(200, mimetypes.guess_type(f.name)[0] or "application/octet-stream", f.read_bytes())
+                return self._send(404, "text/plain", b"not found")
             n = int(self.headers.get("Content-Length") or 0)
             r = app.handle(self.command, u.path, {k: v[0] for k, v in parse_qs(u.query).items()},
                            {k.lower(): v for k, v in self.headers.items()}, self.rfile.read(n) if n else b"")
