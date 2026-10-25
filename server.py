@@ -14,10 +14,11 @@ DDLC expense tracker — web dashboard + Discord webhook notifications.
   PUT / DELETE /api/expenses/<id>
   PUT / DELETE /api/expenses/<id>/receipt     body = the image / PDF, X-Filename header
   GET  /api/receipts/<id>?token=…
-  GET / POST /api/subscriptions, PUT / DELETE /api/subscriptions/<id>
+  GET  /api/week?week=this|last|YYYY-MM-DD   Monday–Sunday totals
+  GET / PUT  /api/settings            {"weekly_report": "1", "monthly_report": "1"}
   GET / PUT  /api/budgets             {"Cloud & hosting": 10000, …} (0 removes)
   GET  /api/export.csv?from=&to=&token=…
-  POST /api/discord/test, /api/discord/report {"month": …}
+  POST /api/discord/test, /api/discord/report {"month": …}, /api/discord/weekly {"week": "this"|"last"}
 
 Settings come from .env (systemd EnvironmentFile): DASHBOARD_PASSWORD, TOKEN_SECRET,
 DISCORD_WEBHOOK_URL, PUBLIC_URL. Data (SQLite, receipts, daily backups) lives in data/.
@@ -38,12 +39,12 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from db import CATEGORIES, CURRENCIES, TZ, Store, parse_month, today
+from db import CATEGORIES, CURRENCIES, TZ, Store, parse_date, parse_month, today, week_start
 from notify import Notifier
 
 HERE = Path(__file__).parent
@@ -75,13 +76,11 @@ def token_ok(token: str | None) -> bool:
 
 
 def scheduler(store: Store, notifier: Notifier, data: Path):
-    """Every few minutes: due subscriptions, reminders, the 1st-of-month summary; once a day: backup."""
+    """Every few minutes: Monday weekly report, 1st-of-month report; once a day: backup."""
     while True:
         try:
             if notifier.enabled:
                 notifier.daily()
-            else:
-                store.charge_due()
             store.usd_inr(today())  # warm the day's rate so adding a USD expense is instant
         except Exception as e:
             print("scheduler:", e)
@@ -178,16 +177,19 @@ def main():
 
         # ── API ──
         def api(self, method: str, path: str):
-            m = re.fullmatch(r"(expenses|subscriptions|receipts)/(\d+)(/receipt)?", path)
+            m = re.fullmatch(r"(expenses|receipts)/(\d+)(/receipt)?", path)
             kind, rid, sub = (m[1], int(m[2]), m[3]) if m else (path, None, None)
 
             if (method, path) == ("GET", "meta"):
                 return self._json({"categories": [{"name": c, "emoji": e} for c, e in CATEGORIES.items()],
                                    "currencies": CURRENCIES, "vendors": store.vendors(limit=200),
                                    "today": today().isoformat(), "discord": notifier.enabled,
+                                   "settings": store.settings(),
                                    "login": PASSWORD is not None})
             if (method, path) == ("GET", "summary"):
                 return self._json(store.summary(parse_month(self.qs.get("month"))))
+            if (method, path) == ("GET", "week"):
+                return self._json(store.week(self.week_of(self.qs.get("week"))))
 
             if kind == "expenses" and rid is None:
                 if method == "GET":
@@ -235,21 +237,11 @@ def main():
                 return self._send(200, mimetypes.guess_type(f.name)[0] or "application/octet-stream", f.read_bytes(),
                                   {"Content-Disposition": f'inline; filename="receipt-{rid}{f.suffix}"'})
 
-            if kind == "subscriptions":
-                if method == "GET" and rid is None:
-                    return self._json(store.subscriptions())
-                if method == "POST" and rid is None:
-                    s = store.add_sub(self.jbody())
-                    self.charge()
-                    return self._json(store.get_sub(s["id"]), 201)
-                if method == "PUT" and rid is not None:
-                    s = store.update_sub(rid, self.jbody())
-                    self.charge()
-                    return self._json(store.get_sub(s["id"]))
-                if method == "DELETE" and rid is not None:
-                    if not store.delete_sub(rid):
-                        raise KeyError(rid)
-                    return self._json({"deleted": rid})
+            if path == "settings":
+                if method == "PUT":
+                    store.set_settings(self.jbody())
+                if method in ("GET", "PUT"):
+                    return self._json(store.settings())
 
             if path == "budgets":
                 if method == "PUT":
@@ -262,19 +254,24 @@ def main():
                 return self.export()
             if (method, path) == ("POST", "discord/test"):
                 err = notifier.post([{"title": "✅ DDLC Expenses is connected", "color": 0x0CA30C,
-                                      "description": "New expenses, budget alerts, renewal reminders and the monthly "
-                                                     "summary will be posted here."}], wait=True)
+                                      "description": "New expenses, budget alerts and the weekly and monthly "
+                                                     "reports will be posted here."}], wait=True)
                 return self._json({"error": err}, 502) if err else self._json({"sent": True})
             if (method, path) == ("POST", "discord/report"):
                 month = parse_month(self.jbody().get("month"))
                 err = notifier.post([notifier.report_embed(month)], wait=True)
                 return self._json({"error": err}, 502) if err else self._json({"sent": True})
+            if (method, path) == ("POST", "discord/weekly"):
+                err = notifier.post([notifier.week_embed(self.week_of(self.jbody().get("week")))], wait=True)
+                return self._json({"error": err}, 502) if err else self._json({"sent": True})
             raise KeyError(path)
 
-        def charge(self):
-            """A subscription whose next date is today or earlier is added right away."""
-            for e in store.charge_due():
-                notifier.expense_added(e)
+        @staticmethod
+        def week_of(text: str | None) -> date:
+            """this (default) / last / any YYYY-MM-DD → Monday of that week."""
+            t = (text or "this").strip().lower()
+            d = today() - timedelta(days=7) if t == "last" else today() if t == "this" else parse_date(t)
+            return week_start(d)
 
         def export(self):
             start, end = self.qs.get("from", ""), self.qs.get("to", "")

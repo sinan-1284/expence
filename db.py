@@ -1,5 +1,5 @@
 """
-Expense store (SQLite) — expenses, subscriptions, budgets, USD→INR rates.
+Expense store (SQLite) — expenses, budgets, settings, USD→INR rates.
 
 Every amount is kept in the currency it was paid in plus its INR value (`inr`),
 converted at that day's rate, so totals are always in rupees.
@@ -59,25 +59,14 @@ CREATE TABLE IF NOT EXISTS expenses (
   category TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   receipt TEXT,                      -- file name in data/receipts/
-  source TEXT NOT NULL DEFAULT 'web', -- web | discord | subscription
-  subscription_id INTEGER,
+  source TEXT NOT NULL DEFAULT 'web',
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS expenses_date ON expenses(date);
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id INTEGER PRIMARY KEY,
-  vendor TEXT NOT NULL,
-  amount REAL NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'INR',
-  category TEXT NOT NULL,
-  cycle TEXT NOT NULL DEFAULT 'monthly',  -- monthly | yearly
-  next_date TEXT NOT NULL,                 -- next charge, YYYY-MM-DD
-  note TEXT NOT NULL DEFAULT '',
-  active INTEGER NOT NULL DEFAULT 1
-);
 CREATE TABLE IF NOT EXISTS budgets (category TEXT PRIMARY KEY, monthly_inr REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS fx (date TEXT PRIMARY KEY, usd_inr REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);  -- "already sent" markers
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -96,12 +85,9 @@ def shift_month(month: str, n: int) -> str:
     return f"{y:04d}-{m:02d}"
 
 
-def add_cycle(d: date, cycle: str, n: int = 1) -> date:
-    """d plus n months (monthly) or years (yearly), clamped to the month's last day."""
-    months = n * (12 if cycle == "yearly" else 1)
-    y, m = d.year, d.month + months
-    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
-    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+def week_start(d: date) -> date:
+    """Monday of d's week."""
+    return d - timedelta(days=d.weekday())
 
 
 MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_abbr) if m}
@@ -247,12 +233,12 @@ class Store:
         return {"date": d.isoformat(), "amount": amount, "currency": currency, "inr": self.to_inr(amount, currency, d),
                 "vendor": vendor[:80], "category": category, "note": str(e.get("note") or "").strip()[:300]}
 
-    def add(self, e: dict, source: str = "web", subscription_id: int | None = None) -> dict:
+    def add(self, e: dict, source: str = "web") -> dict:
         c = self.clean(e)
         eid = self.x("INSERT INTO expenses (date, amount, currency, inr, vendor, category, note, source, "
-                     "subscription_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     "created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                      (c["date"], c["amount"], c["currency"], c["inr"], c["vendor"], c["category"], c["note"],
-                      source, subscription_id, datetime.now(TZ).isoformat(timespec="seconds")))
+                      source, datetime.now(TZ).isoformat(timespec="seconds")))
         return self.get(eid)
 
     def update(self, eid: int, e: dict) -> dict:
@@ -314,69 +300,17 @@ class Store:
             sql += " AND category = ?"; args.append(category)
         return round(self.q(sql, args)[0]["t"], 2)
 
-    # ── subscriptions ──
-    def subscriptions(self, active_only: bool = False) -> list[dict]:
-        rows = self.q("SELECT * FROM subscriptions" + (" WHERE active = 1" if active_only else "") +
-                      " ORDER BY active DESC, next_date")
-        for s in rows:
-            try:
-                monthly = s["amount"] / (12 if s["cycle"] == "yearly" else 1)
-                s["monthly_inr"] = self.to_inr(monthly, s["currency"], today())
-            except ValueError:
-                s["monthly_inr"] = None
-        return rows
+    # ── settings ──
+    SETTINGS = {"weekly_report": "1", "monthly_report": "1"}  # defaults
 
-    def clean_sub(self, s: dict) -> dict:
-        c = self.clean({**s, "date": "today"})  # vendor / amount / currency / category checks
-        cycle = s.get("cycle") or "monthly"
-        if cycle not in ("monthly", "yearly"):
-            raise ValueError("cycle must be monthly or yearly")
-        nd = s["next_date"] if isinstance(s.get("next_date"), date) else parse_date(s.get("next_date"))
-        return {"vendor": c["vendor"], "amount": c["amount"], "currency": c["currency"], "category": c["category"],
-                "cycle": cycle, "next_date": nd.isoformat(), "note": c["note"],
-                "active": 0 if s.get("active") in (0, False, "0") else 1}
+    def settings(self) -> dict[str, str]:
+        return {**self.SETTINGS, **{r["key"]: r["value"] for r in self.q("SELECT * FROM settings")}}
 
-    def add_sub(self, s: dict) -> dict:
-        c = self.clean_sub(s)
-        sid = self.x("INSERT INTO subscriptions (vendor, amount, currency, category, cycle, next_date, note, active) "
-                     "VALUES (:vendor, :amount, :currency, :category, :cycle, :next_date, :note, :active)", c)
-        return self.get_sub(sid)
-
-    def update_sub(self, sid: int, s: dict) -> dict:
-        old = self.get_sub(sid)
-        if not old:
-            raise KeyError(sid)
-        c = self.clean_sub({**old, **s})
-        self.x("UPDATE subscriptions SET vendor=:vendor, amount=:amount, currency=:currency, category=:category, "
-               "cycle=:cycle, next_date=:next_date, note=:note, active=:active WHERE id=:id", {**c, "id": sid})
-        return self.get_sub(sid)
-
-    def delete_sub(self, sid: int) -> dict | None:
-        s = self.get_sub(sid)
-        if s:
-            self.x("DELETE FROM subscriptions WHERE id = ?", (sid,))
-        return s
-
-    def get_sub(self, sid: int) -> dict | None:
-        r = self.q("SELECT * FROM subscriptions WHERE id = ?", (sid,))
-        return r[0] if r else None
-
-    def charge_due(self) -> list[dict]:
-        """Turn every active subscription whose next_date has come into an expense; advance next_date."""
-        charged = []
-        for s in self.q("SELECT * FROM subscriptions WHERE active = 1 AND next_date <= ?", (today().isoformat(),)):
-            d = date.fromisoformat(s["next_date"])
-            while d <= today():
-                try:
-                    e = self.add({"date": d, "amount": s["amount"], "currency": s["currency"], "vendor": s["vendor"],
-                                  "category": s["category"], "note": f"{s['cycle']} subscription"},
-                                 source="subscription", subscription_id=s["id"])
-                except ValueError:
-                    break  # no exchange rate yet: try again next run
-                charged.append(e)
-                d = add_cycle(d, s["cycle"])
-                self.x("UPDATE subscriptions SET next_date = ? WHERE id = ?", (d.isoformat(), s["id"]))
-        return charged
+    def set_settings(self, values: dict):
+        for k, v in values.items():
+            if k not in self.SETTINGS:
+                raise ValueError(f"unknown setting {k!r}")
+            self.x("INSERT OR REPLACE INTO settings VALUES (?, ?)", (k, "1" if v in (True, 1, "1", "true") else "0"))
 
     # ── reports ──
     def summary(self, month: str) -> dict:
@@ -395,8 +329,6 @@ class Store:
         totals = {r["m"]: r["t"] for r in self.q(
             "SELECT substr(date, 1, 7) m, ROUND(SUM(inr), 2) t FROM expenses WHERE substr(date, 1, 7) BETWEEN ? AND ? "
             "GROUP BY m", (months[0], months[-1]))}
-        subs = self.subscriptions(active_only=True)
-        horizon = (today() + timedelta(days=30)).isoformat()
         top = self.q("SELECT vendor, ROUND(SUM(inr), 2) total, COUNT(*) count FROM expenses "
                      "WHERE substr(date, 1, 7) = ? GROUP BY lower(vendor) ORDER BY total DESC LIMIT 5", (month,))
         return {
@@ -406,10 +338,36 @@ class Store:
             "categories": cats,
             "trend": [{"month": m, "total": totals.get(m, 0)} for m in months],
             "top_vendors": top,
-            "subscriptions_monthly": round(sum(s["monthly_inr"] or 0 for s in subs), 2),
-            "upcoming": [s for s in subs if s["next_date"] <= horizon],
             "budget_total": round(sum(budgets.values()), 2) if budgets else None,
             "budget_spent": round(sum(c["total"] for c in cats if c["budget"]), 2),  # only budgeted categories
+        }
+
+    def range_total(self, start: date, end: date) -> float:
+        return round(self.q("SELECT COALESCE(SUM(inr), 0) t FROM expenses WHERE date BETWEEN ? AND ?",
+                            (start.isoformat(), end.isoformat()))[0]["t"], 2)
+
+    def week(self, start: date) -> dict:
+        """Monday–Sunday week starting at `start`: total, vs the week before, categories, vendors, days."""
+        end = start + timedelta(days=6)
+        a, b = start.isoformat(), end.isoformat()
+        cats = self.q("SELECT category, ROUND(SUM(inr), 2) total, COUNT(*) count FROM expenses "
+                      "WHERE date BETWEEN ? AND ? GROUP BY category ORDER BY total DESC", (a, b))
+        for c in cats:
+            c["emoji"] = CATEGORIES.get(c["category"], "📦")
+        per_day = {r["date"]: r["t"] for r in self.q(
+            "SELECT date, ROUND(SUM(inr), 2) t FROM expenses WHERE date BETWEEN ? AND ? GROUP BY date", (a, b))}
+        return {
+            "start": a, "end": b,
+            "total": self.range_total(start, end),
+            "prev_total": self.range_total(start - timedelta(days=7), start - timedelta(days=1)),
+            "count": sum(c["count"] for c in cats),
+            "categories": cats,
+            "top_vendors": self.q("SELECT vendor, ROUND(SUM(inr), 2) total, COUNT(*) count FROM expenses "
+                                  "WHERE date BETWEEN ? AND ? GROUP BY lower(vendor) ORDER BY total DESC LIMIT 5", (a, b)),
+            "biggest": self.q("SELECT * FROM expenses WHERE date BETWEEN ? AND ? ORDER BY inr DESC LIMIT 3", (a, b)),
+            "days": [{"date": (start + timedelta(days=i)).isoformat(),
+                      "total": per_day.get((start + timedelta(days=i)).isoformat(), 0)} for i in range(7)],
+            "month_total": self.month_total(month_of(end)),
         }
 
     def backup(self, dest: Path):

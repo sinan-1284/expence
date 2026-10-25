@@ -119,6 +119,9 @@
   dialog h3 { margin: 0 0 12px; }
   .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--top); color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
   .toast.err { background: var(--crit); }
+  label.check { flex-direction: row; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--text); cursor: pointer; }
+  label.check input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
+  label.check b { font-variant-numeric: normal; white-space: normal; }
   .drop { border: 1px dashed var(--border); border-radius: 8px; padding: 7px 10px; color: var(--muted); font-size: 13px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .drop.has { color: var(--text); border-style: solid; }
   @media (max-width: 760px) {
@@ -142,7 +145,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const SECTIONS = [["overview", "Overview"], ["expenses", "Expenses"], ["subscriptions", "Subscriptions"], ["budgets", "Budgets"], ["settings", "Discord & export"]];
+const SECTIONS = [["overview", "Overview"], ["expenses", "Expenses"], ["budgets", "Budgets"], ["settings", "Reports & export"]];
 let META = null, MONTH = null;
 
 // ── formatting ──
@@ -247,13 +250,13 @@ function tipAt(evt, html) {
 }
 const hideTip = () => { $("tip").hidden = true; };
 function niceMax(v) { if (v <= 0) return 1000; const p = 10 ** Math.floor(Math.log10(v)), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
-function barChart(el, points, { selected, onPick } = {}) {
+function barChart(el, points, { selected, onPick, height } = {}) {
   // single-series monthly bars: 4px rounded tops anchored at the baseline, hairline grid, hover tooltip
-  const W = el.clientWidth || 600, H = 210, L = 48, R = 8, T = 10, B = 24;
+  const W = el.clientWidth || 600, H = height || 210, L = 48, R = 8, T = 10, B = 24;
   const max = niceMax(Math.max(...points.map(p => p.v)));
   const iw = W - L - R, ih = H - T - B, slot = iw / points.length, bw = Math.max(4, Math.min(36, slot - 6));
   const y = v => T + ih - ih * v / max;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly spending, last 12 months"><g class="grid">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Spending per ${points.length === 7 ? "day this week" : "month, last 12 months"}"><g class="grid">`;
   for (let i = 0; i <= 4; i++) s += `<line x1="${L}" x2="${W - R}" y1="${y(max * i / 4)}" y2="${y(max * i / 4)}"/>`;
   s += `</g><g class="axis">`;
   for (let i = 0; i <= 4; i++) s += `<text x="${L - 6}" y="${y(max * i / 4) + 4}" text-anchor="end">${compact(max * i / 4)}</text>`;
@@ -283,7 +286,8 @@ function meter(spent, budget) {
 // ── views ──
 const VIEWS = {};
 VIEWS.overview = async () => {
-  const s = await api("/api/summary?month=" + MONTH);
+  const [s, w] = await Promise.all([api("/api/summary?month=" + MONTH), api("/api/week?week=this")]);
+  const wd = w.total - w.prev_total;
   const recent = (await api("/api/expenses?month=" + MONTH)).slice(0, 6);
   const isCur = MONTH === META.today.slice(0, 7);
   const days = isCur ? +META.today.slice(8) : new Date(+MONTH.slice(0, 4), +MONTH.slice(5), 0).getDate();
@@ -297,7 +301,7 @@ VIEWS.overview = async () => {
       <div class="tile"><small>${isCur ? "This month" : monthName(MONTH)}</small><b>${inr0(s.total)}</b><span>${s.count} expense${s.count === 1 ? "" : "s"}</span></div>
       <div class="tile"><small>Change</small><b>${s.prev_total ? (delta >= 0 ? "+" : "−") + inr0(Math.abs(delta)) : "—"}</b><span>${esc(vs)}</span></div>
       <div class="tile"><small>Per day</small><b>${inr0(s.total / Math.max(1, days))}</b><span>over ${days} day${days === 1 ? "" : "s"}</span></div>
-      <div class="tile"><small>Subscriptions</small><b>${inr0(s.subscriptions_monthly)}</b><span>a month, recurring</span></div>
+      <div class="tile"><small>This week</small><b>${inr0(w.total)}</b><span>${w.prev_total ? `${wd > 0 ? "▲" : wd < 0 ? "▼" : "■"} ${inr0(Math.abs(wd))} vs last week` : "Mon – today"}</span></div>
       ${bud ? `<div class="tile"><small>Budget</small><b>${Math.round(bud.pct)}%</b><span>${inr0(s.budget_spent)} of ${inr0(s.budget_total)} budgeted</span></div>` : ""}
     </div>
     <div class="panel"><h3>Last 12 months <small>click a month to open it</small></h3><div class="chart" id="trend"></div></div>
@@ -312,10 +316,9 @@ VIEWS.overview = async () => {
             ${m && m.cls !== "good" ? `<div style="margin-top:4px">${m.badge}</div>` : ""}</div>`; }).join("")}</div>`
           : `<div class="empty">No expenses in ${monthName(MONTH)}. <a href="#/expenses">Add one</a></div>`}
       </div>
-      <div class="panel"><h3>Coming up <small>next 30 days</small></h3>
-        ${s.upcoming.length ? `<div class="list">${s.upcoming.map(u => `<div class="item"><span>🔁 ${esc(u.vendor)}<small>${dayFmt(u.next_date)} · ${u.cycle}</small></span><b>${money(u.amount, u.currency)}</b></div>`).join("")}</div>`
-          : `<div class="empty">No renewals due. <a href="#/subscriptions">Add subscriptions</a></div>`}
-        <h3 style="margin-top:18px">Top vendors</h3>
+      <div class="panel"><h3>This week <small>${dayFmt(w.start)} – ${dayFmt(w.end)}</small></h3>
+        <div class="chart" id="week"></div>
+        <h3 style="margin-top:18px">Top vendors <small>${monthName(MONTH)}</small></h3>
         ${s.top_vendors.length ? `<div class="list">${s.top_vendors.map(v => `<div class="item"><span>${esc(v.vendor)}<small>${v.count}×</small></span><b>${inr0(v.total)}</b></div>`).join("")}</div>` : `<div class="muted">—</div>`}
       </div>
     </div>
@@ -325,6 +328,8 @@ VIEWS.overview = async () => {
     </div>`;
   barChart($("trend"), s.trend.map(t => ({ key: t.month, v: t.total, label: monthName(t.month, true).split(" ")[0], tip: monthName(t.month) })),
     { selected: MONTH, onPick: p => go("overview", p.key) });
+  barChart($("week"), w.days.map(d => ({ key: d.date, v: d.total, label: D(d.date).toLocaleDateString("en-IN", { weekday: "short" }),
+    tip: D(d.date).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" }) })), { selected: META.today, height: 150 });
 };
 
 function expenseForm(e = {}) {
@@ -368,7 +373,7 @@ VIEWS.expenses = async () => {
         <thead><tr><th>Date</th><th>Vendor</th><th class="hide-sm">Category</th><th class="hide-sm">Note</th><th class="r">Amount</th><th></th></tr></thead>
         <tbody>${rows.map(e => `<tr>
           <td class="num">${dayFmt(e.date)}</td>
-          <td>${esc(e.vendor)}${e.source === "subscription" ? ` <span class="pill">🔁</span>` : ""}</td>
+          <td>${esc(e.vendor)}</td>
           <td class="hide-sm"><span class="pill">${emoji(e.category)} ${esc(e.category)}</span></td>
           <td class="hide-sm muted">${esc(e.note)}</td>
           <td class="amt">${money(e.amount, e.currency)}${e.currency !== "INR" ? `<span class="small">${inr(e.inr)}</span>` : ""}</td>
@@ -415,52 +420,6 @@ async function delExpense(id) {
   try { await api(`/api/expenses/${id}`, "DELETE"); toast("Deleted"); VIEWS.expenses(); } catch (err) { toast(err.message, true); }
 }
 
-function subForm(s = {}) {
-  return `<label>Vendor<input name="vendor" list="vendors" required maxlength="80" value="${esc(s.vendor || "")}" placeholder="Hetzner"></label>
-    <label>Amount<input name="amount" type="number" step="0.01" min="0.01" required value="${s.amount ?? ""}"></label>
-    <label>Currency<select name="currency">${META.currencies.map(c => `<option ${c === (s.currency || "INR") ? "selected" : ""}>${c}</option>`).join("")}</select></label>
-    <label>Every<select name="cycle"><option value="monthly" ${s.cycle !== "yearly" ? "selected" : ""}>Month</option><option value="yearly" ${s.cycle === "yearly" ? "selected" : ""}>Year</option></select></label>
-    <label>Next charge<input name="next_date" type="date" required value="${s.next_date || META.today}"></label>
-    <label>Category<select name="category">${catOptions(s.category, !s.id)}</select></label>
-    <datalist id="vendors">${META.vendors.map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
-}
-VIEWS.subscriptions = async () => {
-  const subs = await api("/api/subscriptions");
-  const monthly = subs.filter(s => s.active).reduce((a, s) => a + (s.monthly_inr || 0), 0);
-  $("main").innerHTML = `
-    <div class="head"><div><h1>Subscriptions</h1><p class="sub">Recurring bills are added as expenses on their day. Discord gets a reminder 3 days before.</p></div></div>
-    <div class="tiles"><div class="tile"><small>Per month</small><b>${inr0(monthly)}</b><span>yearly bills spread over 12 months</span></div>
-      <div class="tile"><small>Per year</small><b>${inr0(monthly * 12)}</b><span>${subs.filter(s => s.active).length} active</span></div></div>
-    <form class="panel" id="subForm"><h3>Add subscription <small>a next charge of today or earlier is added right away</small></h3>
-      <div class="form">${subForm()}<div class="actions"><button class="primary" type="submit">Add</button></div></div></form>
-    <div class="panel">${subs.length ? `<div class="scroll"><table>
-      <thead><tr><th>Vendor</th><th class="hide-sm">Category</th><th>Next charge</th><th class="r">Amount</th><th class="r hide-sm">Per month</th><th>Status</th><th></th></tr></thead>
-      <tbody>${subs.map(s => `<tr>
-        <td>${esc(s.vendor)}</td><td class="hide-sm"><span class="pill">${emoji(s.category)} ${esc(s.category)}</span></td>
-        <td class="num">${s.active ? dayFmt(s.next_date) : "—"}</td>
-        <td class="amt">${money(s.amount, s.currency)}<span class="small">${s.cycle === "yearly" ? "a year" : "a month"}</span></td>
-        <td class="amt hide-sm">${s.monthly_inr != null ? inr0(s.monthly_inr) : "—"}</td>
-        <td>${s.active ? `<span class="badge good"><i>✓</i>Active</span>` : `<span class="badge off"><i>Ⅱ</i>Paused</span>`}</td>
-        <td><div class="rowbtns"><button class="icon" onclick="toggleSub(${s.id}, ${s.active ? 0 : 1})" title="${s.active ? "Pause" : "Resume"}">${s.active ? "Ⅱ" : "▶"}</button>
-          <button class="icon" onclick="editSub(${s.id})" title="Edit">✎</button>
-          <button class="icon danger" onclick="delSub(${s.id})" title="Delete">🗑</button></div></td></tr>`).join("")}</tbody></table></div>`
-      : `<div class="empty">No subscriptions yet: Hetzner, Cloudflare, AWS, Claude, GitHub, domains…</div>`}</div>`;
-  $("subForm").onsubmit = async ev => {
-    ev.preventDefault();
-    try { const s = await api("/api/subscriptions", "POST", formData(ev.target)); toast(`Added ${s.vendor}`); VIEWS.subscriptions(); }
-    catch (err) { toast(err.message, true); }
-  };
-};
-async function toggleSub(id, active) { try { await api(`/api/subscriptions/${id}`, "PUT", { active }); VIEWS.subscriptions(); } catch (e) { toast(e.message, true); } }
-async function delSub(id) { if (confirm("Delete this subscription? Past charges stay in expenses.")) { await api(`/api/subscriptions/${id}`, "DELETE"); VIEWS.subscriptions(); } }
-async function editSub(id) {
-  const s = (await api("/api/subscriptions")).find(x => x.id === id), d = $("dlg");
-  d.innerHTML = `<form id="esf"><h3>Edit ${esc(s.vendor)}</h3><div class="form">${subForm(s)}</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" onclick="$('dlg').close()">Cancel</button><button class="primary" type="submit">Save</button></div></form>`;
-  d.showModal();
-  $("esf").onsubmit = async ev => { ev.preventDefault(); try { await api(`/api/subscriptions/${id}`, "PUT", formData(ev.target)); d.close(); toast("Saved"); VIEWS.subscriptions(); } catch (e) { toast(e.message, true); } };
-}
-
 VIEWS.budgets = async () => {
   const [b, s] = await Promise.all([api("/api/budgets"), api("/api/summary?month=" + META.today.slice(0, 7))]);
   const spent = Object.fromEntries(s.categories.map(c => [c.category, c.total]));
@@ -482,14 +441,23 @@ VIEWS.budgets = async () => {
 };
 
 VIEWS.settings = async () => {
+  const set = await api("/api/settings");
   const cur = META.today.slice(0, 7), year = META.today.slice(0, 4);
   const fy = +META.today.slice(5, 7) >= 4 ? +year : +year - 1;  // Indian financial year, April–March
   $("main").innerHTML = `
-    <div class="head"><div><h1>Discord & export</h1></div></div>
+    <div class="head"><div><h1>Reports & export</h1></div></div>
     <div class="panel"><h3>Discord ${META.discord ? `<span class="badge good"><i>✓</i>Webhook set</span>` : `<span class="badge off"><i>–</i>Not set</span>`}</h3>
-      <p class="muted" style="margin-top:0">Posted to the channel: every new expense, budget alerts at 80% and 100%, subscription bills on the day they are charged, renewal reminders 3 days before, and last month's summary on the 1st at the start of the day.</p>
-      ${META.discord ? `<div class="toolbar"><button id="dTest">Send test message</button><button id="dRep">Post ${monthName(MONTH)} report now</button></div>`
-        : `<p>Put the channel's webhook URL in <code>.env</code> as <code>DISCORD_WEBHOOK_URL=…</code> and restart the service.</p>`}
+      <p class="muted" style="margin-top:0">Every new expense and budget alerts (80% and 100%) are always posted. Reports go out at 9:00 am IST.</p>
+      ${META.discord ? "" : `<p>Put the channel's webhook URL in <code>.env</code> as <code>DISCORD_WEBHOOK_URL=…</code> and restart the service.</p>`}
+      <form id="reports" class="list">
+        <div class="item"><label class="check"><input type="checkbox" name="weekly_report" ${set.weekly_report === "1" ? "checked" : ""}>
+          <span><b>Weekly report</b><small>Every Monday: last week's total, change vs the week before, categories, spend per day, top vendors, biggest expenses</small></span></label>
+          ${META.discord ? `<span class="rowbtns"><button type="button" data-week="last">Post last week</button><button type="button" data-week="this">Post this week so far</button></span>` : ""}</div>
+        <div class="item"><label class="check"><input type="checkbox" name="monthly_report" ${set.monthly_report === "1" ? "checked" : ""}>
+          <span><b>Monthly report</b><small>On the 1st: last month's total, change, categories vs budgets, top vendors</small></span></label>
+          ${META.discord ? `<span class="rowbtns"><button type="button" id="dRep">Post ${monthName(MONTH)}</button></span>` : ""}</div>
+      </form>
+      ${META.discord ? `<div class="toolbar" style="margin-top:12px;margin-bottom:0"><button id="dTest">Send test message</button></div>` : ""}
     </div>
     <div class="panel"><h3>Export CSV <small>opens in Excel / Google Sheets; amounts in the paid currency plus ₹</small></h3>
       <div class="toolbar">
@@ -501,8 +469,15 @@ VIEWS.settings = async () => {
     </div>`;
   if ($("dTest")) {
     $("dTest").onclick = async () => { try { await api("/api/discord/test", "POST", {}); toast("Sent to Discord"); } catch (e) { toast(e.message, true); } };
-    $("dRep").onclick = async () => { try { await api("/api/discord/report", "POST", { month: MONTH }); toast("Report posted"); } catch (e) { toast(e.message, true); } };
+    $("dRep").onclick = async () => { try { await api("/api/discord/report", "POST", { month: MONTH }); toast("Monthly report posted"); } catch (e) { toast(e.message, true); } };
+    document.querySelectorAll("[data-week]").forEach(b => b.onclick = async () => {
+      try { await api("/api/discord/weekly", "POST", { week: b.dataset.week }); toast("Weekly report posted"); } catch (e) { toast(e.message, true); } });
   }
+  $("reports").onchange = async ev => {
+    try { await api("/api/settings", "PUT", { [ev.target.name]: ev.target.checked });
+      toast(`${ev.target.name === "weekly_report" ? "Weekly" : "Monthly"} report ${ev.target.checked ? "on" : "off"}`); }
+    catch (e) { ev.target.checked = !ev.target.checked; toast(e.message, true); }
+  };
   $("range").onsubmit = ev => { ev.preventDefault(); const f = formData(ev.target); location.href = `/api/export.csv?from=${f.from}&to=${f.to}&${tokenQS()}`; };
 };
 
